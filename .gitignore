@@ -1,1 +1,5 @@
 /data/
+.venv
+.qodo
+/code/__pycache__
+
