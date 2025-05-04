@@ -1,42 +1,41 @@
+import os
 import pandas as pd
 import numpy as np
 from scipy.signal import resample_poly
 from math import gcd
 
+#— parse filenames —
+def parse_filename(fn):
+    subj, date, kind = os.path.splitext(fn)[0].split("_")
+    return subj, date, kind  # e.g. "01","20231104","BCG"
+
+#— load raw BCG CSV —
 def load_bcg_csv(path):
+    df = pd.read_csv(path)
+    sig = df.iloc[:,0].astype(float).to_numpy()
+    fs  = float(df.iloc[0,2])
+    return sig, fs
+
+#— load RR CSV (reference) —
+def load_rr_csv(path):
     """
-    Load a BCG CSV (subjectID_date_BCG.csv) as described in Li et al. (2024).
+    Load Reference RR CSV with columns:
+      Timestamp (yyyy/MM/dd H:mm:ss), Heart Rate (bpm), RR Interval in seconds
     Returns:
-      bcg: 1-D numpy array of BCG amplitudes (as float)
-      fs:  original sampling frequency (Hz)
+      times: 1‑d array of seconds (float) from first beat
+      hr:    1‑d array of heart‑rate (bpm)
     """
     df = pd.read_csv(path)
-    bcg = df.iloc[:,0].astype(float).to_numpy() # get the bcg data
-    fs   = float(df.iloc[0,2]) #get sampling freq from the dataframe
-    return bcg, fs
+    # parse the Timestamp strings:
+    dt = pd.to_datetime(df.iloc[:,0], format="%Y/%m/%d %H:%M:%S")
+    # convert to seconds since first timestamp
+    t_secs = (dt.astype(np.int64) / 1e9)  - (dt.astype(np.int64).iloc[0] / 1e9)
+    hr     = df.iloc[:,1].astype(float).to_numpy()
+    return t_secs.to_numpy(), hr
 
-def resample_bcg(bcg, orig_fs, target_fs):
-    """
-    Resample via polyphase FIR filtering (no aliasing) :contentReference[oaicite:1]{index=1}.
-    Args:
-      bcg:       1-D numpy array of original signal
-      orig_fs:   original sampling rate (e.g. 140)
-      target_fs: desired sampling rate (e.g. 50)
-    Returns:
-      bcg_rs: 1-D numpy array at target_fs
-    """
-    # up/down factors for resample_poly must be integers
-    # target_fs/orig_fs = 5/14 → up=5, down=14
-    up   = int(target_fs)
-    down = int(orig_fs)
-    g = gcd(up, down)
-    up //= g; down //= g
-
-    # ensure float input to avoid int‐type bug :contentReference[oaicite:2]{index=2}
-    bcg = bcg.astype(float)
-    bcg_rs = resample_poly(bcg, up, down)
-    return bcg_rs
-
-# usage example:
-# bcg, fs = load_bcg_csv("01_20240115_BCG.csv")
-# bcg50   = resample_bcg(bcg, fs, 50)
+#— rational resample via polyphase (no aliasing) —
+def resample_signal(sig, orig_fs, target_fs):
+    up, down = int(target_fs), int(orig_fs)
+    g = gcd(up,down)
+    up//=g; down//=g
+    return resample_poly(sig.astype(float), up, down)

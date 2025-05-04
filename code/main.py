@@ -83,36 +83,36 @@ def main():
 #     Walks the dataset directory, finds every subject’s BCG .csv,
 #     loads & downsamples to target_fs.
 #     """
-#     bcg_out = {}  # store resampled arrays by subject→date
+    # bcg_out = {}  # store resampled arrays by subject→date
 
-#     # iterate subject folders 01,02,…32
-#     for subj in sorted(os.listdir(DATA_ROOT)[:2]):
-#         subj_folder = os.path.join(DATA_ROOT, subj)
-#         if not os.path.isdir(subj_folder):
-#             continue
+    # # iterate subject folders 01,02,…32 
+    # for subj in sorted(os.listdir(DATA_ROOT)[:2]):
+    #     subj_folder = os.path.join(DATA_ROOT, subj)
+    #     if not os.path.isdir(subj_folder):
+    #         continue
 
-#         bcg_folder = os.path.join(subj_folder, "BCG")
-#         if not os.path.isdir(bcg_folder):
-#             continue
+    #     bcg_folder = os.path.join(subj_folder, "BCG")
+    #     if not os.path.isdir(bcg_folder):
+    #         continue
 
-#         # process each BCG file in subject’s BCG folder
-#         for fn in sorted(os.listdir(bcg_folder)):
-#             if not fn.endswith("_BCG.csv"):
-#                 continue
+    #     # process each BCG file in subject’s BCG folder
+    #     for fn in sorted(os.listdir(bcg_folder)):
+    #         if not fn.endswith("_BCG.csv"):
+    #             continue
 
-#             path = os.path.join(bcg_folder, fn)
-#             print(f"→ Loading {subj}/{fn}")
-#             bcg, orig_fs = load_bcg_csv(path)
+    #         path = os.path.join(bcg_folder, fn)
+    #         print(f"→ Loading {subj}/{fn}")
+    #         bcg, orig_fs = load_bcg_csv(path)
 
-#             if orig_fs != TARGET_F_SAMPLE:
-#                 bcg_rs = resample_bcg(bcg, orig_fs, TARGET_F_SAMPLE)
-#             else:
-#                 bcg_rs = bcg
+    #         if orig_fs != TARGET_F_SAMPLE:
+    #             bcg_rs = resample_bcg(bcg, orig_fs, TARGET_F_SAMPLE)
+    #         else:
+    #             bcg_rs = bcg
 
-#             # store in dict keyed by (subject, date)
-#             date = fn.split("_")[1]
-#             bcg_out.setdefault(subj, {})[date] = bcg_rs
-#             print(bcg_out)
+    #         # store in dict keyed by (subject, date)
+    #         date = fn.split("_")[1]
+    #         bcg_out.setdefault(subj, {})[date] = bcg_rs
+    #         print(bcg_out)
 
 if __name__ == '__main__':
     main()
