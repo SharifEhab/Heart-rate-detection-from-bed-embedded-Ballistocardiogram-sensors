@@ -1,6 +1,6 @@
 # Heart Rate Estimation from Ballistocardiogram (BCG) Signals
 
-## 📚 Course Project: Software Development
+## 📚 Course Project: Data Analytics
 
 This project focuses on **heart rate (HR) estimation** from ballistocardiogram (BCG) signals by detecting **J-peaks** and comparing the results against reference ECG-based heart rate values.
 
