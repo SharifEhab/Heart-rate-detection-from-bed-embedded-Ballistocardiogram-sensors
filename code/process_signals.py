@@ -154,6 +154,7 @@ def extract_clean_windows(bcg_sync, t_sync_ms, binary_mask, rr_times_sync, rr_hr
             """
             num_windows = len(bcg_sync) // win_samples
             clean_windows = []
+            print(f"num_windows: {num_windows}")
             for k in range(num_windows):
                 start_idx = k * win_samples
                 end_idx = start_idx + win_samples
@@ -171,8 +172,14 @@ def extract_clean_windows(bcg_sync, t_sync_ms, binary_mask, rr_times_sync, rr_hr
                     rr_hr_window = rr_hr_sync[mask_rr]
                     rr_int_window = rr_int_sync[mask_rr]
                     
+                   
+
+
                     # Store window if RR data exists
                     if len(rr_hr_window) > 0:
+                         # windows time range of both the bcg and the rr
+                        print(f"RR times window{k}:",rr_times_window[0],rr_times_window[-1])
+                        print(f"t_bcg_window{k}:",t_bcg_window[0],t_bcg_window[-1])
                         clean_windows.append({
                             'subj': subj,
                             'date': date,
@@ -195,118 +202,116 @@ def extract_clean_windows(bcg_sync, t_sync_ms, binary_mask, rr_times_sync, rr_hr
 
 
 ############# Bad Code ##############
-TARGET_F_SAMPLE = 50
-RESULTS_DIR = 'D:/Data Analytics/projectrepo/results'
 
-def process_bcg_window(bcg_window, time_window, subj, date, window_idx):
-    """
-    Process a single clean BCG window to extract heart rate:
-    1. Apply band-pass filter to extract BCG signal
-    2. Apply wavelet transform to extract S4 component (J-peak emphasis)
-    3. Detect J-peaks and compute heart rate
+# def process_bcg_window(bcg_window, time_window, subj, date, window_idx):
+#     """
+#     Process a single clean BCG window to extract heart rate:
+#     1. Apply band-pass filter to extract BCG signal
+#     2. Apply wavelet transform to extract S4 component (J-peak emphasis)
+#     3. Detect J-peaks and compute heart rate
     
-    Parameters:
-        bcg_window: Clean BCG window signal
-        time_window: Time values for the window
-        subj: Subject ID
-        date: Recording date
-        window_idx: Window index for this subject/date
+#     Parameters:
+#         bcg_window: Clean BCG window signal
+#         time_window: Time values for the window
+#         subj: Subject ID
+#         date: Recording date
+#         window_idx: Window index for this subject/date
         
-    Returns:
-        hr_avg: Average heart rate computed from BCG
-        j_peak_intervals: Array of intervals between J-peaks (in seconds)
-        filtered_bcg: Filtered BCG signal
-        wavelet_s4: S4 component from wavelet decomposition
-        j_peak_indices: Indices of detected J-peaks
-    """
-    # Step 1: Apply band-pass filter to extract BCG signal (heart rate component)
-    filtered_bcg = band_pass_filtering(bcg_window, TARGET_F_SAMPLE, "bcg")
+#     Returns:
+#         hr_avg: Average heart rate computed from BCG
+#         j_peak_intervals: Array of intervals between J-peaks (in seconds)
+#         filtered_bcg: Filtered BCG signal
+#         wavelet_s4: S4 component from wavelet decomposition
+#         j_peak_indices: Indices of detected J-peaks
+#     """
+#     # Step 1: Apply band-pass filter to extract BCG signal (heart rate component)
+#     filtered_bcg = band_pass_filtering(bcg_window, TARGET_F_SAMPLE, "bcg")
     
-    # Step 2: Apply wavelet transform
-    w = modwt(filtered_bcg, 'bior3.9', 4)  # Level 4 wavelet decomposition
-    dc = modwtmra(w, 'bior3.9')  # Multi-resolution analysis
-    wavelet_s4 = dc[4]  # Extract S4 component (J-peak emphasis)
+#     # Step 2: Apply wavelet transform
+#     w = modwt(filtered_bcg, 'bior3.9', 4)  # Level 4 wavelet decomposition
+#     dc = modwtmra(w, 'bior3.9')  # Multi-resolution analysis
+#     wavelet_s4 = dc[4]  # Extract S4 component (J-peak emphasis)
     
-    # Step 3: Detect J-peaks
-    # Parameters for peak detection
-    min_peak_distance = int(0.5 * TARGET_F_SAMPLE)  # Minimum 0.5 seconds between peaks
-    min_peak_height = 0.3 * np.max(wavelet_s4)  # Peaks must be at least 30% of max amplitude
+#     # Step 3: Detect J-peaks
+#     # Parameters for peak detection
+#     min_peak_distance = int(0.5 * TARGET_F_SAMPLE)  # Minimum 0.5 seconds between peaks
+#     min_peak_height = 0.3 * np.max(wavelet_s4)  # Peaks must be at least 30% of max amplitude
     
-    # Find peaks in the S4 component
-    j_peak_indices, _ = find_peaks(wavelet_s4, height=min_peak_height, distance=min_peak_distance)
+#     # Find peaks in the S4 component
+#     j_peak_indices, _ = find_peaks(wavelet_s4, height=min_peak_height, distance=min_peak_distance)
     
-    # Step 4: Compute heart rate from J-peaks
-    if len(j_peak_indices) > 1:
-        # Calculate intervals between consecutive J-peaks (in samples)
-        j_peak_intervals_samples = np.diff(j_peak_indices)
+#     # Step 4: Compute heart rate from J-peaks
+#     if len(j_peak_indices) > 1:
+#         # Calculate intervals between consecutive J-peaks (in samples)
+#         j_peak_intervals_samples = np.diff(j_peak_indices)
         
-        # Convert intervals to seconds
-        j_peak_intervals = j_peak_intervals_samples / TARGET_F_SAMPLE
+#         # Convert intervals to seconds
+#         j_peak_intervals = j_peak_intervals_samples / TARGET_F_SAMPLE
         
-        # Convert intervals to beats per minute (BPM)
-        hr_values = 60 / j_peak_intervals
+#         # Convert intervals to beats per minute (BPM)
+#         hr_values = 60 / j_peak_intervals
         
-        # Filter unreasonable heart rates (e.g., below 40 or above 150 BPM)
-        hr_values = hr_values[(hr_values >= 40) & (hr_values <= 150)]
+#         # Filter unreasonable heart rates (e.g., below 40 or above 150 BPM)
+#         hr_values = hr_values[(hr_values >= 40) & (hr_values <= 150)]
         
-        # Calculate average heart rate
-        if len(hr_values) > 0:
-            hr_avg = np.mean(hr_values)
-        else:
-            hr_avg = None
-    else:
-        j_peak_intervals = []
-        hr_avg = None
+#         # Calculate average heart rate
+#         if len(hr_values) > 0:
+#             hr_avg = np.mean(hr_values)
+#         else:
+#             hr_avg = None
+#     else:
+#         j_peak_intervals = []
+#         hr_avg = None
     
-    # Step 5: Plot the results for visualization
-    os.makedirs(RESULTS_DIR, exist_ok=True)
-    plt.figure(figsize=(15, 12))
+#     # Step 5: Plot the results for visualization
+#     os.makedirs(RESULTS_DIR, exist_ok=True)
+#     plt.figure(figsize=(15, 12))
     
-    # Plot the original BCG signal
-    plt.subplot(4, 1, 1)
-    plt.plot(np.arange(len(bcg_window))/TARGET_F_SAMPLE, bcg_window)
-    plt.title(f'Subject {subj}, Date {date}, Window {window_idx+1}: Original BCG Signal')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Amplitude')
+#     # Plot the original BCG signal
+#     plt.subplot(4, 1, 1)
+#     plt.plot(np.arange(len(bcg_window))/TARGET_F_SAMPLE, bcg_window)
+#     plt.title(f'Subject {subj}, Date {date}, Window {window_idx+1}: Original BCG Signal')
+#     plt.xlabel('Time (s)')
+#     plt.ylabel('Amplitude')
     
-    # Plot the filtered BCG signal
-    plt.subplot(4, 1, 2)
-    plt.plot(np.arange(len(filtered_bcg))/TARGET_F_SAMPLE, filtered_bcg)
-    plt.title('Filtered BCG Signal (Band-pass: 2.5-5 Hz)')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Amplitude')
+#     # Plot the filtered BCG signal
+#     plt.subplot(4, 1, 2)
+#     plt.plot(np.arange(len(filtered_bcg))/TARGET_F_SAMPLE, filtered_bcg)
+#     plt.title('Filtered BCG Signal (Band-pass: 2.5-5 Hz)')
+#     plt.xlabel('Time (s)')
+#     plt.ylabel('Amplitude')
     
-    # Plot the S4 wavelet component with detected J-peaks
-    plt.subplot(4, 1, 3)
-    plt.plot(np.arange(len(wavelet_s4))/TARGET_F_SAMPLE, wavelet_s4)
-    if len(j_peak_indices) > 0:
-        plt.plot(j_peak_indices/TARGET_F_SAMPLE, wavelet_s4[j_peak_indices], 'ro', label='J-peaks')
-    plt.title('S4 Wavelet Component with J-peak Detection')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Amplitude')
-    plt.legend()
+#     # Plot the S4 wavelet component with detected J-peaks
+#     plt.subplot(4, 1, 3)
+#     plt.plot(np.arange(len(wavelet_s4))/TARGET_F_SAMPLE, wavelet_s4)
+#     if len(j_peak_indices) > 0:
+#         plt.plot(j_peak_indices/TARGET_F_SAMPLE, wavelet_s4[j_peak_indices], 'ro', label='J-peaks')
+#     plt.title('S4 Wavelet Component with J-peak Detection')
+#     plt.xlabel('Time (s)')
+#     plt.ylabel('Amplitude')
+#     plt.legend()
     
-    # Plot the calculated heart rate from J-peaks
-    plt.subplot(4, 1, 4)
-    if len(j_peak_intervals) > 0:
-        # Plot instantaneous heart rate at each peak
-        peak_times = j_peak_indices[1:] / TARGET_F_SAMPLE  # Time of each peak after the first one
-        plt.plot(peak_times, hr_values, 'bo-', label='Instantaneous HR')
+#     # Plot the calculated heart rate from J-peaks
+#     plt.subplot(4, 1, 4)
+#     if len(j_peak_intervals) > 0:
+#         # Plot instantaneous heart rate at each peak
+#         peak_times = j_peak_indices[1:] / TARGET_F_SAMPLE  # Time of each peak after the first one
+#         plt.plot(peak_times, hr_values, 'bo-', label='Instantaneous HR')
         
-        # Plot the average HR as a horizontal line
-        plt.axhline(y=hr_avg, color='r', linestyle='--', 
-                   label=f'Average HR: {hr_avg:.1f} BPM')
-    plt.title('Heart Rate from J-peaks')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Heart Rate (BPM)')
-    plt.ylim(40, 150)
-    plt.legend()
+#         # Plot the average HR as a horizontal line
+#         plt.axhline(y=hr_avg, color='r', linestyle='--', 
+#                    label=f'Average HR: {hr_avg:.1f} BPM')
+#     plt.title('Heart Rate from J-peaks')
+#     plt.xlabel('Time (s)')
+#     plt.ylabel('Heart Rate (BPM)')
+#     plt.ylim(40, 150)
+#     plt.legend()
     
-    plt.tight_layout()
-    plt.savefig(os.path.join(RESULTS_DIR, f'{subj}_{date}_window{window_idx+1}_jpeaks.png'))
-    plt.close()
+#     plt.tight_layout()
+#     plt.savefig(os.path.join(RESULTS_DIR, f'{subj}_{date}_window{window_idx+1}_jpeaks.png'))
+#     plt.close()
     
-    return hr_avg, j_peak_intervals, filtered_bcg, wavelet_s4, j_peak_indices
+#     return hr_avg, j_peak_intervals, filtered_bcg, wavelet_s4, j_peak_indices
 
 
 
