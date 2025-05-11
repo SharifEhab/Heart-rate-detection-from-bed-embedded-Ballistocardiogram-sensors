@@ -41,42 +41,11 @@ def main():
         # Detect and remove movements
         # Apply movement detection to entire BCG signal
         binary_mask = detect_patterns_movements(0, SEGMENT_SAMPLES, SEGMENT_SAMPLES, bcg_sync, t_sync_ms, plot=0)
-
-
-        # Windowing ################################
-        # will be placed in a function inshaa'Allah
-        num_windows = len(bcg_sync) // WIN_SAMPLES
-        clean_windows = []
-        for k in range(num_windows):
-            start_idx = k * WIN_SAMPLES
-            end_idx = start_idx + WIN_SAMPLES
             
-            # Check if window has no movement (all 1s in binary mask)
-            if np.all(binary_mask[start_idx:end_idx] == 1):
-                bcg_window = bcg_sync[start_idx:end_idx]
-                t_bcg_window = t_sync_ms[start_idx:end_idx]
-                t_start = t_bcg_window[0]
-                t_end = t_bcg_window[-1]
-                
-                # Select corresponding RR beats
-                mask_rr = (rr_times_sync >= t_start) & (rr_times_sync < t_end)
-                rr_times_window = rr_times_sync[mask_rr]
-                rr_hr_window = rr_hr_sync[mask_rr]
-                rr_int_window = rr_int_sync[mask_rr]
-                
-                # Store window if RR data exists
-                if len(rr_hr_window) > 0:
-                    clean_windows.append({
-                        'subj': subj,
-                        'date': date,
-                        't_start': t_start,
-                        't_end': t_end,
-                        'bcg': bcg_window,
-                        't_bcg': t_bcg_window,
-                        'rr_times': rr_times_window,
-                        'rr_hr': rr_hr_window,
-                        'rr_int': rr_int_window
-                    })
+        # Extract clean windows from the synchronized data
+        clean_windows = process.extract_clean_windows(bcg_sync, t_sync_ms, binary_mask, 
+                                             rr_times_sync, rr_hr_sync, rr_int_sync,
+                                             subj, date, WIN_SAMPLES)
         
         print(f"{subj} {date}: Found {len(clean_windows)} clean windows")
         print("###################################################")
@@ -87,7 +56,7 @@ def main():
     # Now we have multiple steps to follow:
     # 1. For each clean bcg window, we need to apply the band pass filter to extract the bcg signal
     # 2. Then we need to apply the wavelet transform function to extract the 4th level wavelet coefficients
-    # 3. Then extract j peaks and compute average of window size 
+    # 3. Then extract j peaks and compute average heart rate of window size 
     # 4. Then compute the average heart rate of corresponding RR beats
     # 5. Then stats and plot the results
 
