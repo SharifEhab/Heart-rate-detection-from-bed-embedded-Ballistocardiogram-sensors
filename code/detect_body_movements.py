@@ -30,7 +30,7 @@ def detect_patterns(pt1, pt2, win_size, data, time, plot):
 
     for i in range(0, limit):
         sub_data = data[pt1:pt2]
-        segments_sd.append(np.std(sub_data, ddof=1))
+        segments_sd.append(np.std(sub_data, ddof=1)) #ddof is the degrees of freedom
         pt1 = pt2
         pt2 += win_size
 
@@ -103,3 +103,68 @@ def detect_patterns(pt1, pt2, win_size, data, time, plot):
     filtered_time = time[mask]
 
     return filtered_data, filtered_time
+
+
+def detect_patterns_movements(pt1, pt2, win_size, data, time, plot=0):
+    limit = int(math.floor(data.size / win_size))
+    flag = np.zeros(data.size)  # 1D array for per-sample flags
+    event_flags = np.zeros(limit)  # Per-segment flags
+    segments_sd = []
+
+    # Compute standard deviation for each segment
+    pt1_, pt2_ = pt1, pt2
+    for i in range(limit):
+        sub_data = data[pt1:pt2]
+        segments_sd.append(np.std(sub_data, ddof=1))
+        pt1 = pt2
+        pt2 += win_size
+
+    # Calculate MAD
+    mad = np.sum(np.abs(segments_sd - np.mean(segments_sd, axis=0))) / len(segments_sd)
+    thresh1, thresh2 = 15, 2 * mad
+
+    # Classify segments
+    pt1, pt2 = pt1_, pt2_
+    for j in range(limit):
+        std_fos = np.around(segments_sd[j])
+        if std_fos < thresh1:  # No-occupancy
+            flag[pt1:pt2] = 3
+            event_flags[j] = 3
+        elif std_fos > thresh2:  # Movement
+            flag[pt1:pt2] = 2
+            event_flags[j] = 2
+        else:  # Sleeping
+            flag[pt1:pt2] = 1
+            event_flags[j] = 1
+        pt1 = pt2
+        pt2 += win_size
+
+    # Create binary mask: 1 for sleeping, 0 for movement or no-occupancy
+    binary_mask = (flag == 1).astype(int)
+
+    # Plotting (optional, disabled for batch processing)
+    if plot == 1:
+        data_for_plot = data
+        width = np.min(data_for_plot)
+        height = np.max(data_for_plot) + abs(width) if width < 0 else np.max(data_for_plot)
+        current_axis = plt.gca()
+        plt.plot(np.arange(data.size), data_for_plot, '-k', linewidth=1)
+        plt.xlabel('Time [Samples]')
+        plt.ylabel('Amplitude [mV]')
+        plt.gcf().autofmt_xdate()
+
+        pt1, pt2 = pt1_, pt2_
+        for j in range(limit):
+            sub_data = data_for_plot[pt1:pt2]
+            sub_time = np.arange(pt1, pt2) / 50
+            color = "#FAF0BE" if event_flags[j] == 3 else "#FF004F" if event_flags[j] == 2 else "#00FFFF"
+            alpha = 0.2 if event_flags[j] in [1, 3] else 1.0
+            plt.plot(sub_time, sub_data, '-k', linewidth=1)
+            current_axis.add_patch(Rectangle((pt1, width), win_size, height, facecolor=color, alpha=alpha))
+            pt1 = pt2
+            pt2 += win_size
+
+        #plt.savefig('D:/Data Analytics/projectrepo/results/rawData.png')
+        #plt.close()
+
+    return binary_mask
