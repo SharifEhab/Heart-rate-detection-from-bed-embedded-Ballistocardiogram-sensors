@@ -8,6 +8,7 @@ from band_pass_filtering import band_pass_filtering
 from modwt_matlab_fft import modwt
 from modwt_mra_matlab_fft import modwtmra
 from scipy.signal import find_peaks
+from detect_peaks import detect_peaks
 # Constants
 TARGET_FS = 50.0  # Target sampling frequency in Hz
 WIN_SEC = 6 * 60  # Window size in seconds (6 minutes)
@@ -180,6 +181,18 @@ def extract_clean_windows(bcg_sync, t_sync_ms, binary_mask, rr_times_sync, rr_hr
                          # windows time range of both the bcg and the rr
                         print(f"RR times window{k}:",rr_times_window[0],rr_times_window[-1])
                         print(f"t_bcg_window{k}:",t_bcg_window[0],t_bcg_window[-1])
+
+                        # Handle timing differences between BCG and RR windows
+                        # Calculate time alignment differences for debugging
+                        time_diff_start = t_start - rr_times_window[0] if len(rr_times_window) > 0 else 0
+                        time_diff_end = t_end - rr_times_window[-1] if len(rr_times_window) > 0 else 0
+                        
+                        # We don't need to adjust the windows as they're already synchronized
+                        # The small millisecond differences are expected due to different sampling rates
+                        # and the fact that RR intervals are discrete events
+                                
+
+
                         clean_windows.append({
                             'subj': subj,
                             'date': date,
@@ -194,7 +207,104 @@ def extract_clean_windows(bcg_sync, t_sync_ms, binary_mask, rr_times_sync, rr_hr
             return clean_windows
 
 
+def calculate_window_heart_rates(clean_windows, fs=50.0, min_beats=50, max_beats=1200,plot=False):
+    results = []
+    for i, window in enumerate(clean_windows):
+        bcg_window = window['bcg']
+        t_bcg_window = window['t_bcg']
+        rr_hr_window = window['rr_hr']
+        
+        print(f"\nProcessing window {i+1}/{len(clean_windows)} for subject {window['subj']}, date {window['date']}")
 
+        if len(rr_hr_window) | len(bcg_window) == 0:
+            print(f"  Skipping window: insufficient data points (RR: {len(rr_hr_window)}, BCG: {len(bcg_window)})")
+            continue
+
+        # # Check RR data
+        # if len(rr_hr_window) < min_beats:
+        #     continue
+
+        # Bandpass filtering
+        filtered_bcg = band_pass_filtering(bcg_window, fs, filter_type='bcg')
+
+        # MODWT
+        w = modwt(filtered_bcg, 'bior3.9', 4)
+        dc = modwtmra(w, 'bior3.9')
+        wavelet_cycle = dc[4]  # Detail at level 4
+
+        # Peak detection
+        mpd = 15  # 0.3s at 50 Hz, for max 200 bpm
+        std_wavelet_cycle = np.std(wavelet_cycle)
+        indices = detect_peaks(wavelet_cycle,mph=0.5*std_wavelet_cycle, mpd=mpd)
+        print(f"  Detected {len(indices)} peaks in wavelet signal with minimum peak distance of {mpd} samples")
+        
+        if(len(indices) < 2):
+            print(f"  Skipping window: insufficient peaks detected ")
+            continue
+
+        # Optional: Plot the signals and detected peaks for debugging
+        if len(indices) > 0 and plot:
+            plt.figure(figsize=(12, 8))
+            
+            # Plot original BCG
+            plt.subplot(3, 1, 1)
+            plt.plot(t_bcg_window, bcg_window)
+            plt.title(f"Original BCG - Window {i+1} (Subject {window['subj']}, Date {window['date']})")
+            plt.xlabel("Time (ms)")
+            plt.ylabel("Amplitude")
+            
+            # Plot filtered BCG
+            plt.subplot(3, 1, 2)
+            plt.plot(t_bcg_window, filtered_bcg)
+            plt.title("Filtered BCG Signal")
+            plt.xlabel("Time (ms)")
+            plt.ylabel("Amplitude")
+            
+            # Plot wavelet with detected peaks
+            plt.subplot(3, 1, 3)
+            plt.plot(t_bcg_window, wavelet_cycle)
+            plt.plot(t_bcg_window[indices], wavelet_cycle[indices], 'ro')
+            plt.title(f"Wavelet Level 4 with {len(indices)} Detected Peaks")
+            plt.xlabel("Time (ms)")
+            plt.ylabel("Amplitude")
+            
+            plt.tight_layout()
+            plt.savefig(f"results/window_{window['subj']}_{window['date']}_{i+1}.png")
+            plt.close()
+            print(f"  Saved debug plot to results/window_{window['subj']}_{window['date']}_{i+1}.png")
+
+        # Compute BCG heart rate
+        if len(indices) > 1:
+            peak_times = t_bcg_window[indices]
+            intervals = np.diff(peak_times) / 1000.0  # Convert to seconds
+            mean_interval = np.mean(intervals)
+            hr_bcg = 60.0 / mean_interval if mean_interval > 0 else 0.0
+            print(f"  Computed BCG heart rate: {hr_bcg:.2f} bpm from {len(indices)} peaks")
+            print(f"  Average interval between peaks: {mean_interval:.3f} seconds")
+        else:
+            hr_bcg = 0.0
+            print(f"  Could not compute BCG heart rate: insufficient peaks detected")
+
+        # Compute reference heart rate
+        hr_ref = np.mean(rr_hr_window)
+        print(f"  Reference heart rate from RR data: {hr_ref:.2f} bpm")
+
+        # Store if valid
+        if hr_bcg > 0 and hr_ref > 0:
+            results.append({
+                'subj': window['subj'],
+                'date': window['date'],
+                't_start': window['t_start'],
+                'hr_bcg': hr_bcg,
+                'hr_ref': hr_ref
+            })
+            print(f"  ✓ Valid result stored: BCG HR = {hr_bcg:.2f} bpm, Reference HR = {hr_ref:.2f} bpm")
+            print(f"  Difference: {abs(hr_bcg - hr_ref):.2f} bpm ({(abs(hr_bcg - hr_ref)/hr_ref*100):.2f}%)")
+        else:
+            print(f"  ✗ Result rejected: Values out of valid range (BCG: {hr_bcg:.2f}, Ref: {hr_ref:.2f})")
+
+    print(f"\nProcessed {len(clean_windows)} windows, stored {len(results)} valid results")
+    return results
 
 
 

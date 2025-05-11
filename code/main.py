@@ -25,15 +25,15 @@ from scipy.stats import linregress
 
 DATA_ROOT = 'D:/Data Analytics/projectrepo/dataset/data' # path to the dataset folder which has all patients(01, 02 , .... )
 TARGET_F_SAMPLE = 50 # 50 Hz
-WIN_SEC = 1 * 60  # 1 minutes
-WIN_SAMPLES = int(WIN_SEC * 50)  # 3000 samples at 50 Hz
+WIN_SEC = 2 * 60  # 2 minutes
+WIN_SAMPLES = int(WIN_SEC * 50)  # 6000 samples at 50 Hz
 SEGMENT_SEC = 5  # 5 seconds
 SEGMENT_SAMPLES = int(SEGMENT_SEC * 50)  # 250 samples
 def main():
     # Main program starts here
     print('\nstart processing ...')
     paired = process.get_bcg_rr_pairs(DATA_ROOT)
-    results = []
+    all_results = []
     for subj, date, bcg_path, rr_path in paired:
         print("###################################################")
         print(f"Processing {subj} {date}: {bcg_path}, {rr_path}")
@@ -53,54 +53,28 @@ def main():
         
         print(f"{subj} {date}: Found {len(clean_windows)} clean windows")
         print("###################################################")
-
-        # Process each clean window for heart rate
-        for window in clean_windows:
-            bcg_window = window['bcg']
-            t_bcg_window = window['t_bcg']
-            rr_hr_window = window['rr_hr']
-
-            # Bandpass filtering
-            filtered_bcg = band_pass_filtering(bcg_window, fs=50.0, filter_type='bcg')
-
-            # MODWT
-            w = modwt(filtered_bcg, 'bior3.9', 4)
-            dc = modwtmra(w, 'bior3.9')
-            wavelet_cycle = dc[4]  # Detail at level 4
-
-            # Peak detection and heart rate
-            mpd = 15  # Minimum peak distance (0.3s at 50 Hz)
-            rate, indices = compute_rate(wavelet_cycle, t_bcg_window, mpd=mpd)
-
-            # Reference heart rate
-            hr_ref = np.mean(rr_hr_window) if len(rr_hr_window) > 0 else np.nan
-
-            # Store results
-            if rate > 0 and not np.isnan(hr_ref):
-                results.append({
-                    'subj': subj,
-                    'date': date,
-                    't_start': window['t_start'],
-                    'hr_bcg': rate,
-                    'hr_ref': hr_ref
-                }) 
+        # Calculate heart rates for this subject's windows
+        window_results = process.calculate_window_heart_rates(clean_windows)
+        all_results.extend(window_results)
         
         print("###################################################")
-    # Compute error metrics
-    hr_bcg_all = [r['hr_bcg'] for r in results if not np.isnan(r['hr_bcg']) and not np.isnan(r['hr_ref'])]
-    hr_ref_all = [r['hr_ref'] for r in results if not np.isnan(r['hr_bcg']) and not np.isnan(r['hr_ref'])]
-    
-        #########################################################################
+    # Compute error metrics across all patients
+    hr_bcg_all = [r['hr_bcg'] for r in all_results if r['hr_bcg'] > 0 and r['hr_ref'] > 0]
+    hr_ref_all = [r['hr_ref'] for r in all_results if r['hr_bcg'] > 0 and r['hr_ref'] > 0]
     if len(hr_bcg_all) > 0:
         mae = np.mean(np.abs(np.array(hr_bcg_all) - np.array(hr_ref_all)))
         rmse = np.sqrt(np.mean((np.array(hr_bcg_all) - np.array(hr_ref_all))**2))
-        mape = np.mean(np.abs((np.array(hr_bcg_all) - np.array(hr_ref_all)) / np.array(hr_ref_all))) * 100
-        print(f"Error Metrics:")
+        mask = np.array(hr_ref_all) > 0
+        if np.any(mask):
+            mape = np.mean(np.abs((np.array(hr_bcg_all)[mask] - np.array(hr_ref_all)[mask]) / np.array(hr_ref_all)[mask])) * 100
+        else:
+            mape = np.nan
+        print(f"Error Metrics (All Patients):")
         print(f"MAE: {mae:.2f} bpm")
         print(f"RMSE: {rmse:.2f} bpm")
-        print(f"MAPE: {mape:.2f}%")
+        print(f"MAPE: {mape:.2f}%" if not np.isnan(mape) else "MAPE: undefined")
         
-        # Generate plots
+        # Generate plots for all data
         # Bland-Altman
         diff = np.array(hr_bcg_all) - np.array(hr_ref_all)
         avg = (np.array(hr_bcg_all) + np.array(hr_ref_all)) / 2
@@ -114,19 +88,19 @@ def main():
         plt.axhline(mean_diff - 1.96 * std_diff, color='g', linestyle='--')
         plt.xlabel('Average HR (bpm)')
         plt.ylabel('Difference (BCG - Ref) (bpm)')
-        plt.title('Bland-Altman Plot')
-        plt.savefig(f'results/bland_altman_{subj}_{date}.png')
+        plt.title('Bland-Altman Plot (All Patients)')
+        plt.savefig('results/bland_altman_all.png')
         plt.close()
         
         # Scatter plot
-        slope, intercept, r_value, p_value, std_err = linregress(hr_ref_all, hr_bcg_all)
+        slope, intercept, r_value, p_value, std_err = linregress(hr_bcg_all, hr_ref_all)
         plt.figure()
-        plt.scatter(hr_ref_all, hr_bcg_all)
-        plt.plot(hr_ref_all, intercept + slope * np.array(hr_ref_all), 'r')
-        plt.xlabel('Reference HR (bpm)')
-        plt.ylabel('BCG HR (bpm)')
-        plt.title(f'Correlation: r={r_value:.2f}')
-        plt.savefig(f'results/scatter_{subj}_{date}.png')
+        plt.scatter(hr_bcg_all, hr_ref_all)
+        plt.plot(hr_bcg_all, intercept + slope * np.array(hr_bcg_all), 'r')
+        plt.xlabel('BCG HR (bpm)')
+        plt.ylabel('Reference HR (bpm)')
+        plt.title(f'Correlation: r={r_value:.2f} (All Patients)')
+        plt.savefig('results/scatter_all.png')
         plt.close()
         
         # Boxplot
@@ -134,8 +108,8 @@ def main():
         plt.figure()
         plt.boxplot(errors)
         plt.ylabel('Error (BCG - Ref) (bpm)')
-        plt.title('Boxplot of HR Errors')
-        plt.savefig(f'results/boxplot_{subj}_{date}.png')
+        plt.title('Boxplot of HR Errors (All Patients)')
+        plt.savefig('results/boxplot_all.png')
         plt.close()
     else:
         print("No valid HR data to compute metrics or generate plots")
